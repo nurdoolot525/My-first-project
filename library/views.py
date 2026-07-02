@@ -19,7 +19,7 @@ from .serializers import (
     LoanSerializer,
 )
 
-ALLOWED_ORDERING_FIELDS = {"title", "isbn", "available_copies", "total_copies"}
+ALLOWED_ORDERING_FIELDS = {"title","-title","isbn","-isbn","available_copies","-available_copies","total_copies","total_copies"}
 
 
 class BookViewSet(viewsets.ModelViewSet):
@@ -51,7 +51,7 @@ class BookViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(available_copies__gt=0)
 
         ordering = self.request.query_params.get("ordering")
-        if ordering and ordering.lstrip("-") in ALLOWED_ORDERING_FIELDS:
+        if ordering and ordering in ALLOWED_ORDERING_FIELDS:
             queryset = queryset.order_by(ordering)
 
         return queryset
