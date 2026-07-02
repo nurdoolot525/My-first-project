@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import Author, Book, Loan
@@ -23,6 +24,16 @@ class BookSerializer(serializers.ModelSerializer):
         model = Book
         fields = ["id", "title", "authors", "isbn", "total_copies", "available_copies"]
 
+    def validate(self, data):
+        total = data.get("total_copies", getattr(self.instance, "total_copies", None))
+        available = data.get("available_copies", getattr(self.instance, "available_copies", None))
+        if total is not None and available is not None:
+            if available < 0 or available > total:
+                raise serializers.ValidationError(
+                    "available_copies должен быть в диапазоне от 0 до total_copies."
+                )
+        return data
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["authors"] = [author.name for author in instance.authors.all()]
@@ -38,9 +49,11 @@ class LoanSerializer(serializers.ModelSerializer):
         fields = ["id", "book", "reader", "issued_at", "due_date", "returned_at", "status"]
         read_only_fields = ["issued_at", "due_date", "returned_at", "status"]
 
+    @extend_schema_field(serializers.CharField)
     def get_book(self, obj):
         return obj.book.title
 
+    @extend_schema_field(serializers.CharField)
     def get_reader(self, obj):
         return obj.reader.username
 

@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
@@ -18,12 +19,24 @@ from .serializers import (
     LoanSerializer,
 )
 
+ALLOWED_ORDERING_FIELDS = {"title", "isbn", "available_copies", "total_copies"}
+
 
 class BookViewSet(viewsets.ModelViewSet):
     queryset = Book.objects.all()
     serializer_class = BookSerializer
     permission_classes = [IsAdminUserOrReadOnly]
     http_method_names = ["get", "post", "patch", "delete"]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("search", str, description="Поиск по title, authors__name"),
+            OpenApiParameter("available", str, description="1 — только книги с available_copies > 0"),
+            OpenApiParameter("ordering", str, description="Сортировка: title, isbn, available_copies"),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -38,7 +51,7 @@ class BookViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(available_copies__gt=0)
 
         ordering = self.request.query_params.get("ordering")
-        if ordering:
+        if ordering and ordering.lstrip("-") in ALLOWED_ORDERING_FIELDS:
             queryset = queryset.order_by(ordering)
 
         return queryset
@@ -63,6 +76,14 @@ class LoanViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateM
             return [IsAdminUser()]
         return [IsAuthenticated()]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("overdue", str, description="1 — только просроченные выдачи (staff)"),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         queryset = super().get_queryset()
 
@@ -70,10 +91,13 @@ class LoanViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateM
             queryset = queryset.filter(reader=self.request.user)
 
         if self.request.query_params.get("overdue") == "1":
+            if not self.request.user.is_staff:
+                return queryset.none()
             queryset = queryset.filter(status="issued", due_date__lt=date.today())
 
         return queryset
 
+    @extend_schema(request=LoanCreateSerializer, responses=LoanSerializer)
     def create(self, request, *args, **kwargs):
         write_serializer = self.get_serializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
@@ -95,6 +119,7 @@ class LoanViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.CreateM
 
         return Response(LoanSerializer(loan).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None, responses=LoanSerializer)
     @action(detail=True, methods=["post"], url_path="return")
     def return_loan(self, request, pk=None):
         get_object_or_404(Loan, pk=pk)
