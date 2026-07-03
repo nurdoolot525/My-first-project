@@ -25,10 +25,9 @@ class BookSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "authors", "isbn", "total_copies", "available_copies"]
 
     def validate(self, data):
-        total = data.get("total_copies", getattr(self.instance, "total_copies", None))
-        available = data.get("available_copies", getattr(self.instance, "available_copies", None))
-        if total is not None and available is not None:
-            if available < 0 or available > total:
+        total = data.get("total_copies", getattr(self.instance, "total_copies", 1))
+        available = data.get("available_copies", getattr(self.instance, "available_copies", 1))
+        if available < 0 or available > total:
                 raise serializers.ValidationError(
                     "available_copies должен быть в диапазоне от 0 до total_copies."
                 )
